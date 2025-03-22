@@ -2943,4 +2943,10 @@ export const Rulesets: import('../sim/dex-formats').FormatDataTable = {
 			return newSpecies;
 		},
 	},
+	chooseforallplayers: {
+		effectType: 'Rule',
+		name: 'Choose For All Players',
+		desc: "Allows each player to make choices for all players in the battle.",
+		// hardcoded in server/room-battle.ts
+	},
 };

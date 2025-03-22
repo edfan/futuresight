@@ -615,43 +615,64 @@ export class RoomBattle extends RoomGame<RoomBattlePlayer> {
 			user.popup(`Your battle is currently paused, so you cannot move right now.`);
 			return;
 		}
-		const player = this.playerTable[user.id];
-		const [choice, rqid] = data.split('|', 2);
-		if (!player) return;
-		const request = player.request;
+		const choosePlayer = this.playerTable[user.id];
+
+		const [choice, slotStr, rqid] = data.split('|', 3);
+		const slot = slotStr as SideID;
+		const slotPlayer = this[slot];
+
+		choosePlayer.sendRoom(`|error|` + choosePlayer + ' ' + slotPlayer + ' ' + slot + ' ' + data);
+		
+		if (!choosePlayer || !slotPlayer) return;
+
+		if (choosePlayer.slot != slot && !this.format.includes('chooseforallplayers')) {
+			choosePlayer.sendRoom(`|error|[Invalid choice] Can't choose for a different player`);
+			return;
+		}
+
+		const request = slotPlayer.request;
 		if (request.isWait !== false && request.isWait !== true) {
-			player.sendRoom(`|error|[Invalid choice] There's nothing to choose`);
+			choosePlayer.sendRoom(`|error|[Invalid choice] There's nothing to choose`);
 			return;
 		}
 		const allPlayersWait = this.players.every(p => !!p.request.isWait);
 		if (allPlayersWait || // too late
 			(rqid && rqid !== `${request.rqid}`)) { // WAY too late
-			player.sendRoom(`|error|[Invalid choice] Sorry, too late to make a different move; the next turn has already started`);
+				choosePlayer.sendRoom(`|error|[Invalid choice] Sorry, too late to make a different move; the next turn has already started`);
 			return;
 		}
 		request.isWait = true;
 		request.choice = choice;
 
-		void this.stream.write(`>${player.slot} ${choice}`);
+		void this.stream.write(`>${slot} ${choice}`);
 	}
 	override undo(user: User, data: string) {
-		const player = this.playerTable[user.id];
-		const [, rqid] = data.split('|', 2);
-		if (!player) return;
-		const request = player.request;
+		const choosePlayer = this.playerTable[user.id];
+		const [, slotStr, rqid] = data.split('|', 2);
+		const slot = slotStr as SideID;
+		const slotPlayer = this[slot];
+
+		if (!choosePlayer || !slotPlayer) return;
+
+		if (choosePlayer.slot != slot && !this.format.includes('chooseforallplayers')) {
+			choosePlayer.sendRoom(`|error|[Invalid choice] Can't undo for a different player`);
+			return;	
+		}
+
+		const request = slotPlayer.request;
 		if (request.isWait !== true) {
-			player.sendRoom(`|error|[Invalid choice] There's nothing to cancel`);
+			choosePlayer.sendRoom(`|error|[Invalid choice] There's nothing to cancel`);
 			return;
 		}
 		const allPlayersWait = this.players.every(p => !!p.request.isWait);
 		if (allPlayersWait || // too late
 			(rqid && rqid !== `${request.rqid}`)) { // WAY too late
-			player.sendRoom(`|error|[Invalid choice] Sorry, too late to cancel; the next turn has already started`);
+			choosePlayer.sendRoom(`|error|[Invalid choice] Sorry, too late to cancel; the next turn has already started`);
 			return;
 		}
 		request.isWait = false;
 
-		void this.stream.write(`>${player.slot} undo`);
+		void this.stream.write(`>${slot} undo`);
 	}
 	override joinGame(user: User, slot?: SideID, playerOpts?: { team?: string }) {
 		if (user.id in this.playerTable) {
@@ -786,7 +807,8 @@ export class RoomBattle extends RoomGame<RoomBattlePlayer> {
 				this.rqid++;
 				const request = JSON.parse(lines[2].slice(9));
 				request.rqid = this.rqid;
-				const requestJSON = JSON.stringify(request);
+				request.slot = slot;
+				var requestJSON = JSON.stringify(request);
 				this[slot].request = {
 					rqid: this.rqid,
 					request: requestJSON,
@@ -794,7 +816,15 @@ export class RoomBattle extends RoomGame<RoomBattlePlayer> {
 					choice: '',
 				};
 				this.requestCount++;
-				player?.sendRoom(`|request|${requestJSON}`);
+				if (this.format.includes('chooseforallplayers')) {
+					for (const player of this.players) {
+						request.isYourSlot = player.slot === slot;
+						requestJSON = JSON.stringify(request);
+						player?.sendRoom(`|request|${requestJSON}`);
+					}
+				} else {
+					player?.sendRoom(`|request|${requestJSON}`);
+				}
 				break;
 			}
 			player?.sendRoom(lines[2]);
