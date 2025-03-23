@@ -295,6 +295,11 @@ export abstract class RoomGame<PlayerClass extends RoomGamePlayer = RoomGamePlay
 	choose?(user: User, text: string): void;
 
 	/**
+	 * Called when a user uses /jumptoturn [text]
+	 */
+	jumpToTurn?(user: User, text: string): void;
+
+	/**
 	 * Called when a user uses /undo [text]
 	 */
 	undo?(user: User, text: string): void;

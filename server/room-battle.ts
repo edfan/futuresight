@@ -19,6 +19,7 @@ import type { Tournament } from './tournaments/index';
 import type { RoomSettings } from './rooms';
 import type { BestOfGame } from './room-battle-bestof';
 import type { GameTimerSettings } from '../sim/dex-formats';
+import { User } from "./users";
 
 type ChannelIndex = 0 | 1 | 2 | 3 | 4;
 export type PlayerIndex = 1 | 2 | 3 | 4;
@@ -620,8 +621,6 @@ export class RoomBattle extends RoomGame<RoomBattlePlayer> {
 		const [choice, slotStr, rqid] = data.split('|', 3);
 		const slot = slotStr as SideID;
 		const slotPlayer = this[slot];
-
-		choosePlayer.sendRoom(`|error|` + choosePlayer + ' ' + slotPlayer + ' ' + slot + ' ' + data);
 		
 		if (!choosePlayer || !slotPlayer) return;
 
@@ -646,6 +645,14 @@ export class RoomBattle extends RoomGame<RoomBattlePlayer> {
 
 		void this.stream.write(`>${slot} ${choice}`);
 	}
+
+	override jumpToTurn(user: User, text: string): void {
+		for (const player of this.players) {
+			player?.sendRoom(`|jumptoturn|${text}`);
+		}
+		void this.stream.write(`>jumptoturn ${text}`);
+	}
+
 	override undo(user: User, data: string) {
 		const choosePlayer = this.playerTable[user.id];
 		const [, slotStr, rqid] = data.split('|', 2);

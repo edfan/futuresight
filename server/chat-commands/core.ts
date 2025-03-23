@@ -1103,6 +1103,13 @@ export const commands: Chat.ChatCommands = {
 		`/choose [text] - Make a choice for the currently active game.`,
 	],
 
+	jumptoturn(target, room, user) {
+		room = this.requireRoom();
+		if (!room.game) return this.errorReply(this.tr`This room doesn't have an active game.`);
+		if (!room.game.jumpToTurn) return this.errorReply(this.tr`This game doesn't support /jumptoturn`);
+		room.game.jumpToTurn(user, target);
+	},
+
 	mv: 'move',
 	attack: 'move',
 	move(target, room, user) {

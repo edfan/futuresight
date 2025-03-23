@@ -146,6 +146,8 @@ export class Battle {
 	sentLogPos: number;
 	sentEnd: boolean;
 
+	stateByTurn: Array<AnyObject>;
+
 	requestState: RequestState;
 	turn: number;
 	midTurn: boolean;
@@ -190,6 +192,8 @@ export class Battle {
 	constructor(options: BattleOptions) {
 		this.log = [];
 		this.add('t:', Math.floor(Date.now() / 1000));
+
+		this.stateByTurn = new Array<AnyObject>();
 
 		const format = options.format || Dex.formats.get(options.formatid, true);
 		this.format = format;
@@ -315,7 +319,7 @@ export class Battle {
 	}
 
 	toJSON(): AnyObject {
-		return State.serializeBattle(this);
+		return JSON.parse(JSON.stringify(State.serializeBattle(this)));
 	}
 
 	static fromJSON(serialized: string | AnyObject): Battle {
@@ -1747,6 +1751,11 @@ export class Battle {
 		if (this.gen === 3) this.quickClawRoll = this.randomChance(1, 5);
 
 		this.makeRequest('move');
+
+		while (this.stateByTurn.length <= this.turn) {
+			this.stateByTurn.push({});
+		}
+		this.stateByTurn[this.turn] = this.toJSON();
 	}
 
 	maybeTriggerEndlessBattleClause(
