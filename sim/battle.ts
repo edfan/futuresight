@@ -1751,6 +1751,10 @@ export class Battle {
 		if (this.gen === 3) this.quickClawRoll = this.randomChance(1, 5);
 
 		this.makeRequest('move');
+		this.midTurn = false;
+		this.queue.clear();
+
+		this.sendUpdates();
 
 		while (this.stateByTurn.length <= this.turn) {
 			this.stateByTurn.push({});
@@ -2938,8 +2942,6 @@ export class Battle {
 		}
 
 		this.endTurn();
-		this.midTurn = false;
-		this.queue.clear();
 	}
 
 	/**
