@@ -98,7 +98,6 @@ export class BattleStream extends Streams.ObjectReadWriteStream<string> {
 	}
 
 	_writeLine(type: string, message: string) {
-		console.log(type, message);
 		switch (type) {
 		case 'start':
 			const options = JSON.parse(message);
@@ -234,12 +233,14 @@ export class BattleStream extends Streams.ObjectReadWriteStream<string> {
 			if (turnJSON === undefined) {
 				break;
 			}
-			console.log(turnJSON);
 			const send = this.battle!.send;
 			const turnBattle = Battle.fromJSON(turnJSON);
 			this.battle = turnBattle;
+			this.battle.stateByTurn[turn] = turnJSON;
 			this.battle.restart(send);
 			this.battle.makeRequest('move');
+			this.battle.midTurn = false;
+			this.battle.queue.clear();
 			break;
 		case 'version':
 		case 'version-origin':
