@@ -236,6 +236,7 @@ export class BattleStream extends Streams.ObjectReadWriteStream<string> {
 			const send = this.battle!.send;
 			const turnBattle = Battle.fromJSON(turnJSON);
 			this.battle = turnBattle;
+			this.battle.resetRNG(null);
 			this.battle.stateByTurn[turn] = turnJSON;
 			this.battle.restart(send);
 			this.battle.makeRequest('move');
