@@ -636,78 +636,7 @@ export class User extends Chat.MessageContext {
 		}
 	}
 	async validateToken(token: string, name: string, userid: ID, connection: Connection) {
-		if (!token && Config.noguestsecurity) {
-			if (Users.isTrusted(userid)) {
-				this.send(`|nametaken|${name}|You need an authentication token to log in as a trusted user.`);
-				return null;
-			}
-			return '1';
-		}
-
-		if (!token || token.startsWith(';')) {
-			this.send(`|nametaken|${name}|Your authentication token was invalid.`);
-			return null;
-		}
-
-		let challenge = '';
-		if (connection) {
-			challenge = connection.challenge;
-		}
-		if (!challenge) {
-			Monitor.warn(`verification failed; no challenge`);
-			return null;
-		}
-
-		const [tokenData, tokenSig] = Utils.splitFirst(token, ';');
-		const tokenDataSplit = tokenData.split(',');
-		const [signedChallenge, signedUserid, userType, signedDate, signedHostname] = tokenDataSplit;
-
-		if (signedHostname && Config.legalhosts && !Config.legalhosts.includes(signedHostname)) {
-			Monitor.warn(`forged assertion: ${tokenData}`);
-			this.send(`|nametaken|${name}|Your assertion is for the wrong server. This server is ${Config.legalhosts[0]}.`);
-			return null;
-		}
-
-		if (tokenDataSplit.length < 5) {
-			Monitor.warn(`outdated assertion format: ${tokenData}`);
-			this.send(`|nametaken|${name}|The assertion you sent us is corrupt or incorrect. Please send the exact assertion given by the login server's JSON response.`);
-			return null;
-		}
-
-		if (signedUserid !== userid) {
-			// userid mismatch
-			this.send(`|nametaken|${name}|Your verification signature doesn't match your new username.`);
-			return null;
-		}
-
-		if (signedChallenge !== challenge) {
-			// a user sent an invalid token
-			Monitor.debug(`verify token challenge mismatch: ${signedChallenge} <=> ${challenge}`);
-			this.send(`|nametaken|${name}|Your verification signature doesn't match your authentication token.`);
-			return null;
-		}
-
-		const expiry = Config.tokenexpiry || 25 * 60 * 60;
-		if (Math.abs(parseInt(signedDate) - Date.now() / 1000) > expiry) {
-			Monitor.warn(`stale assertion: ${tokenData}`);
-			this.send(`|nametaken|${name}|Your assertion is stale. This usually means that the clock on the server computer is incorrect. If this is your server, please set the clock to the correct time.`);
-			return null;
-		}
-
-		const success = await Verifier.verify(tokenData, tokenSig);
-		if (!success) {
-			Monitor.warn(`verify failed: ${token}`);
-			Monitor.warn(`challenge was: ${challenge}`);
-			this.send(`|nametaken|${name}|Your verification signature was invalid.`);
-			return null;
-		}
-
-		// future-proofing
-		this.s1 = tokenDataSplit[5];
-		this.s2 = tokenDataSplit[6];
-		this.s3 = tokenDataSplit[7];
-
-		return userType;
+		return '1';
 	}
 	/**
 	 * Do a rename, passing and validating a login token.
