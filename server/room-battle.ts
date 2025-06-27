@@ -624,11 +624,6 @@ export class RoomBattle extends RoomGame<RoomBattlePlayer> {
 		
 		if (!choosePlayer || !slotPlayer) return;
 
-		if (choosePlayer.slot != slot && !this.format.includes('chooseforallplayers')) {
-			choosePlayer.sendRoom(`|error|[Invalid choice] Can't choose for a different player`);
-			return;
-		}
-
 		const request = slotPlayer.request;
 		if (request.isWait !== false && request.isWait !== true) {
 			choosePlayer.sendRoom(`|error|[Invalid choice] There's nothing to choose`);
@@ -660,11 +655,6 @@ export class RoomBattle extends RoomGame<RoomBattlePlayer> {
 		const slotPlayer = this[slot];
 
 		if (!choosePlayer || !slotPlayer) return;
-
-		if (choosePlayer.slot != slot && !this.format.includes('chooseforallplayers')) {
-			choosePlayer.sendRoom(`|error|[Invalid choice] Can't undo for a different player`);
-			return;	
-		}
 
 		const request = slotPlayer.request;
 		if (request.isWait !== true) {
@@ -823,13 +813,9 @@ export class RoomBattle extends RoomGame<RoomBattlePlayer> {
 					choice: '',
 				};
 				this.requestCount++;
-				if (this.format.includes('chooseforallplayers')) {
-					for (const player of this.players) {
-						request.isYourSlot = player.slot === slot;
-						requestJSON = JSON.stringify(request);
-						player?.sendRoom(`|request|${requestJSON}`);
-					}
-				} else {
+				for (const player of this.players) {
+					request.isYourSlot = player.slot === slot;
+					requestJSON = JSON.stringify(request);
 					player?.sendRoom(`|request|${requestJSON}`);
 				}
 				break;
