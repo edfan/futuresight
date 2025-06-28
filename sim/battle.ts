@@ -1931,6 +1931,9 @@ export class Battle {
 
 		this.queue.addChoice({ choice: 'start' });
 		this.midTurn = true;
+
+		this.stateByTurn[0] = this.toJSON();
+
 		if (!this.requestState) this.turnLoop();
 	}
 

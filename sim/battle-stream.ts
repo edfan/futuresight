@@ -229,7 +229,9 @@ export class BattleStream extends Streams.ObjectReadWriteStream<string> {
 			break;
 		case 'jumptoturn':
 			let turn = parseInt(message);
-			let turnJSON = this.battle!.stateByTurn[turn];
+			let stateByTurn = this.battle!.stateByTurn;
+			let turnJSON = stateByTurn[turn];
+			console.log(turnJSON);
 			if (turnJSON === undefined) {
 				break;
 			}
@@ -237,11 +239,16 @@ export class BattleStream extends Streams.ObjectReadWriteStream<string> {
 			const turnBattle = Battle.fromJSON(turnJSON);
 			this.battle = turnBattle;
 			this.battle.resetRNG(null);
-			this.battle.stateByTurn[turn] = turnJSON;
 			this.battle.restart(send);
-			this.battle.makeRequest('move');
-			this.battle.midTurn = false;
-			this.battle.queue.clear();
+			if (turn === 0) {
+				this.battle.makeRequest('teampreview');
+				this.battle.midTurn = true;
+			} else {
+				this.battle.makeRequest('move');
+				this.battle.midTurn = false;
+				this.battle.queue.clear();
+			}
+			this.battle.stateByTurn = stateByTurn;
 			break;
 		case 'version':
 		case 'version-origin':
