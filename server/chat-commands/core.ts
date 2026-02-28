@@ -14,7 +14,7 @@
  */
 
 /* eslint no-else-return: "error" */
-import { Utils } from '../../lib';
+import { FS, Utils } from '../../lib';
 import type { UserSettings } from '../users';
 import type { GlobalPermission, RoomPermission } from '../user-groups';
 
@@ -1154,6 +1154,96 @@ export const commands: Chat.ChatCommands = {
 	},
 	startbattlehelp: [
 		`/startbattle [format];;;[packed_team_1];;;[packed_team_2] - Creates a single-player training battle. Format defaults to gen9vgc2026regf if only two args provided.`,
+	],
+
+	async shareposition(target, room, user, connection) {
+		room = this.requireRoom();
+		if (!room.battle) return this.errorReply('You can only share positions in battles.');
+
+		const battle = room.battle;
+		const positionJSON = await battle.getPosition();
+		if (!positionJSON) return this.errorReply('Failed to export battle position.');
+
+		// Get packed teams for both sides (needed to create new battle on resume)
+		const [team1Data, team2Data] = await Promise.all([
+			battle.getPlayerTeam(battle.p1),
+			battle.getPlayerTeam(battle.p2),
+		]);
+
+		const positionData = JSON.parse(positionJSON);
+		positionData.packedTeams = [
+			team1Data ? Teams.pack(team1Data) : '',
+			team2Data ? Teams.pack(team2Data) : '',
+		];
+
+		const id = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+		FS('config/saved-positions').mkdirpSync();
+		FS(`config/saved-positions/${id}.json`).writeSync(JSON.stringify(positionData));
+
+		const link = `http://localhost:8000/?position=${id}`;
+		user.sendTo(room, `|raw|<div class="broadcast-blue"><strong>Position saved!</strong><br />` +
+			`Turn ${positionData.turn} &mdash; share this link to resume from this position:<br />` +
+			`<code style="user-select:all">${link}</code> ` +
+			`<copytext value="${link}" class="button" style="margin-left:4px">Copy Link</copytext></div>`);
+	},
+	sharepositionhelp: [
+		`/shareposition - Saves the current battle position and generates a link to resume from it.`,
+	],
+
+	async resume(target, room, user, connection) {
+		const id = target.trim();
+		if (!id) return this.errorReply('Usage: /resume [position-id]');
+		if (!/^[\w-]+$/.test(id)) return this.errorReply('Invalid position ID.');
+
+		let positionJSON: string;
+		try {
+			positionJSON = FS(`config/saved-positions/${id}.json`).readSync();
+		} catch {
+			return this.errorReply('Position not found. The link may have expired.');
+		}
+
+		const positionData = JSON.parse(positionJSON);
+		const format = positionData.formatid;
+		const packedTeams = positionData.packedTeams;
+
+		if (!packedTeams || packedTeams.length < 2) {
+			return this.errorReply('Invalid position data: missing teams.');
+		}
+
+		// Validate teams (applies format rules like Adjust Level)
+		const validator = TeamValidatorAsync.get(format);
+		const [val1, val2] = await Promise.all([
+			validator.validateTeam(packedTeams[0]),
+			validator.validateTeam(packedTeams[1]),
+		]);
+		if (!val1.startsWith('1')) return this.errorReply(`Team 1 rejected: ${val1.slice(1)}`);
+		if (!val2.startsWith('1')) return this.errorReply(`Team 2 rejected: ${val2.slice(1)}`);
+
+		const battleRoom = Rooms.createBattle({
+			format,
+			players: [
+				{user, team: val1.slice(1)},
+				{user: null, team: val2.slice(1)},
+			],
+			challengeType: 'challenge',
+			rated: 0,
+		});
+		if (!battleRoom) return this.errorReply('Failed to create battle.');
+
+		user.joinRoom(battleRoom);
+
+		// Load saved state
+		const battleGame = battleRoom.battle!;
+		const loadPayload = {
+			turn: positionData.turn,
+			state: positionData.state,
+			stateByTurn: positionData.stateByTurn,
+			log: positionData.log || [],
+		};
+		battleGame.loadPosition(JSON.stringify(loadPayload));
+	},
+	resumehelp: [
+		`/resume [position-id] - Creates a new battle starting from a previously saved position.`,
 	],
 
 	mv: 'move',

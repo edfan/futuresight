@@ -15,7 +15,7 @@ import { execSync } from "child_process";
 import { Repl, ProcessManager, type Streams } from '../lib';
 import { BattleStream } from "../sim/battle-stream";
 import { RoomGamePlayer, RoomGame } from "./room-game";
-import type { Tournament } from './tournaments/index';
+
 import type { RoomSettings } from './rooms';
 import type { BestOfGame } from './room-battle-bestof';
 import type { GameTimerSettings } from '../sim/dex-formats';
@@ -459,7 +459,7 @@ export class RoomBattleTimer {
 }
 
 export interface RoomBattlePlayerOptions {
-	user: User;
+	user: User | null;
 	/** should be '' for random teams */
 	team?: string;
 	rating?: number;
@@ -482,7 +482,7 @@ export interface RoomBattleOptions {
 	challengeType?: ChallengeType;
 	allowRenames?: boolean;
 	rated?: number | boolean | null;
-	tour?: Tournament | null;
+	tour?: any;
 	inputLog?: string;
 	ratedMessage?: string;
 	seed?: PRNGSeed;
@@ -650,7 +650,7 @@ export class RoomBattle extends RoomGame<RoomBattlePlayer> {
 
 	override undo(user: User, data: string) {
 		const choosePlayer = this.playerTable[user.id];
-		const [, slotStr, rqid] = data.split('|', 2);
+		const [, slotStr, rqid] = data.split('|', 3);
 		const slot = slotStr as SideID;
 		const slotPlayer = this[slot];
 
@@ -805,7 +805,7 @@ export class RoomBattle extends RoomGame<RoomBattlePlayer> {
 				const request = JSON.parse(lines[2].slice(9));
 				request.rqid = this.rqid;
 				request.slot = slot;
-				var requestJSON = JSON.stringify(request);
+				let requestJSON = JSON.stringify(request);
 				this[slot].request = {
 					rqid: this.rqid,
 					request: requestJSON,
@@ -1215,15 +1215,17 @@ export class RoomBattle extends RoomGame<RoomBattlePlayer> {
 			this.started = true;
 		}
 		const delayStart = this.options.delayedStart || !!this.options.inputLog;
-		const users = this.players.map(player => {
+		const users: User[] = [];
+		for (const player of this.players) {
 			const user = player.getUser();
-			if (!user && !delayStart) {
+			if (user) {
+				users.push(user);
+			} else if (!delayStart && player.id) {
 				throw new Error(`User ${player.id} not found on ${this.roomid} battle creation`);
 			}
-			return user;
-		});
+		}
 		if (!delayStart) {
-			Rooms.global.onCreateBattleRoom(users as User[], this.room, { rated: this.rated });
+			Rooms.global.onCreateBattleRoom(users, this.room, { rated: this.rated });
 			this.started = true;
 		} else if (delayStart === 'multi') {
 			this.room.add(`|uhtml|invites|<div class="broadcast broadcast-blue"><strong>This is a 4-player challenge battle</strong><br />The players will need to add more players before the battle can start.</div>`);
@@ -1322,6 +1324,19 @@ export class RoomBattle extends RoomGame<RoomBattlePlayer> {
 		});
 		const result = await logPromise;
 		return result;
+	}
+	async getPosition(): Promise<string | void> {
+		void this.stream.write('>exportstate');
+		const promise = new Promise<string[]>((resolve, reject) => {
+			if (!this.dataResolvers) this.dataResolvers = [];
+			this.dataResolvers.push([resolve, reject]);
+		});
+		const result = await promise;
+		if (!result?.[0]) return;
+		return result[0];
+	}
+	loadPosition(positionJSON: string): void {
+		void this.stream.write(`>loadstate ${positionJSON}`);
 	}
 }
 

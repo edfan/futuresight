@@ -231,7 +231,6 @@ export class BattleStream extends Streams.ObjectReadWriteStream<string> {
 			let turn = parseInt(message);
 			let stateByTurn = this.battle!.stateByTurn;
 			let turnJSON = stateByTurn[turn];
-			console.log(turnJSON);
 			if (turnJSON === undefined) {
 				break;
 			}
@@ -250,6 +249,47 @@ export class BattleStream extends Streams.ObjectReadWriteStream<string> {
 			}
 			this.battle.stateByTurn = stateByTurn;
 			break;
+		case 'exportstate': {
+			const battle = this.battle!;
+			const exportData = {
+				formatid: battle.format.id,
+				turn: battle.turn,
+				state: battle.toJSON(),
+				stateByTurn: battle.stateByTurn,
+				log: battle.log,
+			};
+			this.push(`requesteddata\n${JSON.stringify(exportData)}`);
+			break;
+		}
+		case 'loadstate': {
+			const loadData = JSON.parse(message);
+			const loadSend = this.battle!.send;
+			this.battle = Battle.fromJSON(loadData.state);
+			this.battle.resetRNG(null);
+			this.battle.restart(loadSend);
+
+			if (loadData.turn === 0) {
+				this.battle.makeRequest('teampreview');
+				this.battle.midTurn = true;
+			} else {
+				this.battle.makeRequest('move');
+				this.battle.midTurn = false;
+				this.battle.queue.clear();
+			}
+			this.battle.stateByTurn = loadData.stateByTurn || [];
+
+			// Emit saved log for client to populate battle log and scene.
+			// Must happen here (in the stream) rather than via room.add() so it
+			// arrives AFTER the loadstate update/request messages.
+			// Filter through extractChannelMessages to resolve |split| blocks —
+			// the raw log contains both SECRET and PUBLIC versions of each event,
+			// and the client would process both, causing duplicate damage/switches.
+			if (loadData.log?.length) {
+				const channelMessages = extractChannelMessages(loadData.log.join('\n'), [-1]);
+				this.pushMessage('update', `|initlog|${JSON.stringify(channelMessages[-1])}`);
+			}
+			break;
+		}
 		case 'version':
 		case 'version-origin':
 			break;

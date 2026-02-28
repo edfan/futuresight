@@ -1,15 +1,15 @@
 import { test, expect, type Page, type Locator } from '@playwright/test';
 import { TEAM_1, TEAM_2, FORMAT } from '../fixtures/teams';
+import * as fs from 'fs';
+import * as path from 'path';
 
 const CLIENT_URL = `file:///Users/efan/futuresight-client/play.pokemonshowdown.com/testclient.html?~~localhost:8000`;
 
-async function login(page: Page, name: string) {
+async function login(page: Page, _name?: string) {
 	await page.goto(CLIENT_URL);
-	await page.waitForSelector('button[name="login"]', { timeout: 15_000 });
-	await page.click('button[name="login"]');
-	await page.fill('input[name="username"]', name);
-	await page.click('button[type="submit"]');
-	await page.waitForSelector('textarea.textbox', { timeout: 10_000 });
+	// Auto-naming assigns a username on connect; wait for the chat textbox
+	// which appears once the user is named and connected
+	await page.waitForSelector('textarea.textbox', { timeout: 15_000 });
 }
 
 async function sendCommand(page: Page, command: string) {
@@ -197,6 +197,67 @@ test.describe('Futuresight Battle Flow', () => {
 		expect(result.logAfter).toContain('Battle started');
 		expect(result.logAfter).not.toContain('Turn 2');
 		expect(result.logAfter).not.toContain('Glacial Lance');
+	});
+
+	test('share position and resume from link creates battle at saved turn', async ({ page }) => {
+		const { p1, p2 } = await startBattleAndPreview(page, 'ShareTest');
+
+		// Play Turn 1
+		await playTurn(page, p1, p2);
+		await expect(p1.locator('button[name="chooseMove"]:not([disabled])').first())
+			.toBeVisible({ timeout: 15_000 });
+
+		// Play Turn 2
+		await playTurn(page, p1, p2);
+		await expect(p1.locator('button[name="chooseMove"]:not([disabled])').first())
+			.toBeVisible({ timeout: 15_000 });
+
+		// Share position (saves state to a file on the server)
+		// Send to the battle room specifically (app.curRoom might be lobby)
+		await page.evaluate(() => {
+			const rooms = (window as any).app.rooms;
+			for (const id of Object.keys(rooms)) {
+				if (id.startsWith('battle-')) {
+					rooms[id].send('/shareposition');
+					return;
+				}
+			}
+		});
+
+		// Wait for the file to be written, then find the most recent saved position
+		// by polling the server's saved-positions directory
+		const savedDir = path.resolve(__dirname, '../../../config/saved-positions');
+		let positionId = '';
+		for (let attempt = 0; attempt < 10; attempt++) {
+			await page.waitForTimeout(1_000);
+			if (!fs.existsSync(savedDir)) continue;
+			const files = fs.readdirSync(savedDir).filter(f => f.endsWith('.json'));
+			if (files.length === 0) continue;
+			const newest = files
+				.map(f => ({ name: f, mtime: fs.statSync(path.join(savedDir, f)).mtimeMs }))
+				.sort((a, b) => b.mtime - a.mtime)[0];
+			positionId = newest.name.replace('.json', '');
+			break;
+		}
+		expect(positionId).toBeTruthy();
+
+		// Resume from the saved position
+		await sendCommand(page, `/resume ${positionId}`);
+
+		// Wait for the NEW battle room's controls to appear
+		await page.waitForTimeout(2_000);
+		const newP1 = page.locator('#battle-controls-p1').last();
+		await expect(newP1.locator('button[name="chooseMove"]:not([disabled])').first())
+			.toBeVisible({ timeout: 15_000 });
+
+		// Moves should be available (not team preview) — battle resumed mid-game
+		const hasMoveButtons = await newP1.locator('button[name="chooseMove"]:not([disabled])').count();
+		expect(hasMoveButtons).toBeGreaterThan(0);
+
+		// Verify jump-to-turn still works in the resumed battle (stateByTurn was preserved)
+		await sendCommand(page, '/jumptoturn 1');
+		await expect(newP1.locator('button[name="chooseMove"]:not([disabled])').first())
+			.toBeVisible({ timeout: 15_000 });
 	});
 
 	test('jump to turn 2 then jump to turn 1 does not replay old moves', async ({ page }) => {

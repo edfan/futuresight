@@ -15,7 +15,7 @@
     "ts-chacha20": "^1.2.0"
   },
   "optionalDependencies": {
-    "better-sqlite3": "^11.8.1",
+    "better-sqlite3": "^12.6.2",
     "cloud-env": "^0.2.3",
     "githubhook": "^1.9.3",
     "node-static": "^0.7.11",
@@ -69,6 +69,7 @@
   ],
   "license": "MIT",
   "devDependencies": {
+    "@playwright/test": "^1.58.2",
     "@stylistic/eslint-plugin": "^4.0.1",
     "@types/better-sqlite3": "7.6.3",
     "@types/cloud-env": "^0.2.2",
