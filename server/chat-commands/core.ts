@@ -1180,7 +1180,8 @@ export const commands: Chat.ChatCommands = {
 		FS('config/saved-positions').mkdirpSync();
 		FS(`config/saved-positions/${id}.json`).writeSync(JSON.stringify(positionData));
 
-		const link = `http://localhost:8000/?position=${id}`;
+		const baseUrl = Config.clientUrl || 'http://localhost:8000';
+		const link = `${baseUrl}/?position=${id}`;
 		user.sendTo(room, `|raw|<div class="broadcast-blue"><strong>Position saved!</strong><br />` +
 			`Turn ${positionData.turn} &mdash; share this link to resume from this position:<br />` +
 			`<code style="user-select:all">${link}</code> ` +

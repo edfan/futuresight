@@ -183,6 +183,13 @@ exports.routes = {
 };
 
 /**
+ * clientUrl - the base URL of the client, used for generating share links.
+ *   Set this to your client's public URL (e.g. 'https://futuresight.me').
+ *   Defaults to 'http://localhost:8000' if not set.
+ */
+exports.clientUrl = 'http://localhost:8000';
+
+/**
  * crashguardemail - if the server has been running for more than an hour
  *   and crashes, send an email using these settings, rather than locking down
  *   the server. Uncomment this definition if you want to use this feature;
