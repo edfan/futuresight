@@ -1757,7 +1757,9 @@ export const Punishments = new class {
 		return IPTools.lookup(ip).then(({ dnsbl, host, hostType }) => {
 			user = connection.user || user;
 
-			if (hostType === 'proxy' && !user.trusted && !user.locked) {
+			if (Config.noipchecks) {
+				// skip proxy/dnsbl checks
+			} else if (hostType === 'proxy' && !user.trusted && !user.locked) {
 				user.locked = '#hostfilter';
 			} else if (dnsbl && !user.autoconfirmed) {
 				user.semilocked = '#dnsbl';
