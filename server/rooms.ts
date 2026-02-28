@@ -19,7 +19,6 @@ const ALPHABET = '0123456789abcdefghijklmnopqrstuvwxyz'.split('');
 
 const TIMEOUT_EMPTY_DEALLOCATE = 10 * 60 * 1000;
 const TIMEOUT_INACTIVE_DEALLOCATE = 40 * 60 * 1000;
-const REPORT_USER_STATS_INTERVAL = 10 * 60 * 1000;
 const MAX_CHATROOM_ID_LENGTH = 225;
 
 const CRASH_REPORT_THROTTLE = 60 * 60 * 1000;
@@ -1195,7 +1194,7 @@ export class GlobalRoomState {
 	 */
 	readonly modjoinedAutojoinList: RoomID[];
 	readonly ladderIpLog: Streams.WriteStream;
-	readonly reportUserStatsInterval: NodeJS.Timeout;
+
 	lockdown: boolean | 'pre' | 'ddos';
 	battleCount: number;
 	lastReportedCrash: number;
@@ -1278,11 +1277,6 @@ export class GlobalRoomState {
 			// of GlobalRoom can have.
 			this.ladderIpLog = new Streams.WriteStream({ write() { return undefined; } });
 		}
-
-		this.reportUserStatsInterval = setInterval(
-			() => this.reportUserStats(),
-			REPORT_USER_STATS_INTERVAL
-		);
 
 		// init users
 		this.maxUsers = 0;
@@ -2175,18 +2169,19 @@ export const Rooms = {
 		if (players.length > format.playerCount) {
 			throw new Error(`${players.length} players were provided, but the format is a ${format.playerCount}-player format.`);
 		}
-		if (new Set(players).size < players.length) {
+		const nonNullPlayers = players.filter(Boolean) as User[];
+		if (new Set(nonNullPlayers).size < nonNullPlayers.length) {
 			throw new Error(`Players can't battle themselves`);
 		}
 
-		for (const user of players) {
+		for (const user of nonNullPlayers) {
 			Ladders.cancelSearches(user);
 		}
 
 		const isBestOf = Dex.formats.getRuleTable(format).valueRules.get('bestof');
 
 		if (Rooms.global.lockdown === 'pre' && isBestOf && !options.isBestOfSubBattle) {
-			for (const user of players) {
+			for (const user of nonNullPlayers) {
 				user.popup(`The server will be restarting soon. Best-of-${isBestOf} battles cannot be started at this time.`);
 			}
 			return null;
@@ -2194,15 +2189,15 @@ export const Rooms = {
 
 		// gotta allow new bo3 child battles to start
 		if (Rooms.global.lockdown === true && !options.isBestOfSubBattle) {
-			for (const user of players) {
+			for (const user of nonNullPlayers) {
 				user.popup("The server is restarting. Battles will be available again in a few minutes.");
 			}
 			return null;
 		}
 
-		const p1Special = players.length ? players[0].battleSettings.special : undefined;
+		const p1Special = nonNullPlayers.length ? nonNullPlayers[0].battleSettings.special : undefined;
 		let mismatch = `"${p1Special}"`;
-		for (const user of players) {
+		for (const user of nonNullPlayers) {
 			if (user.battleSettings.special !== p1Special) {
 				mismatch += ` vs. "${user.battleSettings.special}"`;
 			}
@@ -2210,7 +2205,7 @@ export const Rooms = {
 		}
 
 		if (mismatch !== `"${p1Special}"`) {
-			for (const user of players) {
+			for (const user of nonNullPlayers) {
 				user.popup(`Your special battle settings don't match: ${mismatch}`);
 			}
 			return null;

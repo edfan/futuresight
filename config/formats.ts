@@ -23,6 +23,16 @@ export const Formats: import('../sim/dex-formats').FormatList = [
 	///////////////////////////////////////////////////////////////////
 
 	{
+		section: "Regulation F",
+	},
+	{
+		name: "[Gen 9] VGC 2026 Reg F",
+		mod: 'gen9',
+		gameType: 'doubles',
+		ruleset: ['Flat Rules', '!! Adjust Level = 50', 'Min Source Gen = 9', 'VGC Timer', 'Open Team Sheets'],
+	},
+
+	{
 		section: "Regulation I",
 	},
 	{

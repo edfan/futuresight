@@ -51,7 +51,7 @@ async function chooseMoves(controls: Locator) {
  */
 async function startBattleAndPreview(page: Page, name: string) {
 	await login(page, name);
-	await sendCommand(page, `/startbattle ${TEAM_1};;;${TEAM_2}`);
+	await sendCommand(page, `/startbattle ${FORMAT};;;${TEAM_1};;;${TEAM_2}`);
 
 	// Wait for the current room's battle controls (use last() to target the
 	// newest room in case the server has stale rooms from previous tests)

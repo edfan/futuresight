@@ -645,5 +645,3 @@ const telstraRange: AddressRange & { host: string } = {
 };
 
 export default IPTools;
-
-void IPTools.updateTorRanges();

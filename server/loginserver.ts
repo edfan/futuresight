@@ -188,9 +188,3 @@ export const LoginServer = Object.assign(new LoginServerInstance(), {
 	prepreplayServer: new LoginServerInstance(),
 });
 
-FS('./config/custom.css').onModify(() => {
-	void LoginServer.request('invalidatecss');
-});
-if (!Config.nofswriting) {
-	void LoginServer.request('invalidatecss');
-}

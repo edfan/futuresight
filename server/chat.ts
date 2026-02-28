@@ -2059,8 +2059,6 @@ export const Chat = new class {
 
 		// Load filters from Config
 		this.loadPlugin(Config, 'config');
-		this.loadPlugin(Tournaments, 'tournaments');
-
 		this.loadPluginDirectory('dist/server/chat-plugins');
 		Chat.oldPlugins = {};
 		// lower priority should run later

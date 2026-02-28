@@ -1110,6 +1110,52 @@ export const commands: Chat.ChatCommands = {
 		room.game.jumpToTurn(user, target);
 	},
 
+	async startbattle(target, room, user, connection) {
+		// Use ;;; as delimiter since packed teams contain commas and pipes
+		const parts = target.split(';;;').map(s => s.trim());
+		if (parts.length < 2) {
+			return this.errorReply(`Usage: /startbattle [format];;;[packed_team_1];;;[packed_team_2]  (format defaults to gen9vgc2026regf)`);
+		}
+		let format: string;
+		let team1: string;
+		let team2: string;
+		if (parts.length === 2) {
+			format = 'gen9vgc2026regf';
+			team1 = parts[0];
+			team2 = parts[1];
+		} else {
+			format = parts[0];
+			team1 = parts[1];
+			team2 = parts[2];
+		}
+		// Validate teams so format rules (e.g. Adjust Level) are applied
+		const validator = TeamValidatorAsync.get(format);
+		const [val1, val2] = await Promise.all([
+			validator.validateTeam(team1),
+			validator.validateTeam(team2),
+		]);
+		if (!val1.startsWith('1')) {
+			return this.errorReply(`Team 1 rejected: ${val1.slice(1)}`);
+		}
+		if (!val2.startsWith('1')) {
+			return this.errorReply(`Team 2 rejected: ${val2.slice(1)}`);
+		}
+		const battleRoom = Rooms.createBattle({
+			format,
+			players: [
+				{user, team: val1.slice(1)},
+				{user: null, team: val2.slice(1)},
+			],
+			challengeType: 'challenge',
+			rated: 0,
+		});
+		if (!battleRoom) return this.errorReply(`Failed to create battle.`);
+		user.joinRoom(battleRoom);
+	},
+	startbattlehelp: [
+		`/startbattle [format];;;[packed_team_1];;;[packed_team_2] - Creates a single-player training battle. Format defaults to gen9vgc2026regf if only two args provided.`,
+	],
+
 	mv: 'move',
 	attack: 'move',
 	move(target, room, user) {

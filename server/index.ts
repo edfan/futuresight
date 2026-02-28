@@ -118,9 +118,6 @@ function setupGlobals() {
 	global.Verifier = Verifier;
 	Verifier.PM.spawn();
 
-	const { Tournaments } = require('./tournaments');
-	global.Tournaments = Tournaments;
-
 	const { IPTools } = require('./ip-tools');
 	global.IPTools = IPTools;
 	void IPTools.loadHostsAndRanges();
