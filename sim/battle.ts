@@ -1942,6 +1942,7 @@ export class Battle {
 		if (send) (this as any).send = send;
 		this.sentLogPos = 0;
 		this.sentEnd = false;
+		this.ended = false;
 		(this as any).messageLog = [];
 		(this as any).log = [];
 		this.add('t:', Math.floor(Date.now() / 1000));
@@ -2878,7 +2879,7 @@ export class Battle {
 			let reviveSwitch = false; // Used to ignore the fake switch for Revival Blessing
 			if (switches[i] && !this.canSwitch(this.sides[i])) {
 				for (const pokemon of this.sides[i].active) {
-					if (this.sides[i].slotConditions[pokemon.position]['revivalblessing']) {
+					if (this.sides[i].slotConditions[pokemon.position]?.['revivalblessing']) {
 						reviveSwitch = true;
 						continue;
 					}

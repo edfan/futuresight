@@ -14,7 +14,7 @@
  */
 
 /* eslint no-else-return: "error" */
-import { FS, Utils } from '../../lib';
+import { FS, Net, Utils } from '../../lib';
 import type { UserSettings } from '../users';
 import type { GlobalPermission, RoomPermission } from '../user-groups';
 
@@ -1245,6 +1245,259 @@ export const commands: Chat.ChatCommands = {
 	},
 	resumehelp: [
 		`/resume [position-id] - Creates a new battle starting from a previously saved position.`,
+	],
+
+	async fetchreplay(target, room, user, connection) {
+		const url = target.trim();
+		if (!url) return this.errorReply('Usage: /fetchreplay [replay-url]');
+
+		// Validate URL is from replay.pokemonshowdown.com (strip query params like ?p2)
+		const match = url.replace(/[?#].*$/, '').match(/^https?:\/\/replay\.pokemonshowdown\.com\/(.+?)(?:\.json)?$/);
+		if (!match) return this.errorReply('URL must be from replay.pokemonshowdown.com');
+
+		const replayId = match[1];
+		const jsonUrl = `https://replay.pokemonshowdown.com/${replayId}.json`;
+
+		let replayJSON: string;
+		try {
+			replayJSON = await Net(jsonUrl).get();
+		} catch (err: any) {
+			return this.errorReply(`Failed to fetch replay: ${err.message}`);
+		}
+
+		// Validate it parsed as JSON with expected fields
+		let data;
+		try {
+			data = JSON.parse(replayJSON);
+		} catch {
+			return this.errorReply('Invalid replay data received.');
+		}
+		if (!data.log) return this.errorReply('Replay has no log data.');
+
+		connection.send(`|queryresponse|replaydata|${replayJSON}`);
+	},
+	fetchreplayhelp: [
+		`/fetchreplay [url] - Fetches a Pokemon Showdown replay for import.`,
+	],
+
+	async fetchstats(target, room, user, connection) {
+		let formatid = target.trim();
+		if (!formatid) return this.errorReply('Usage: /fetchstats [formatid]');
+
+		// Strip Bo3/Bo5 suffix for stats lookup
+		formatid = formatid.replace(/bo[35]$/i, '');
+
+		// Check cache first
+		const cachePath = `config/stats-cache/${formatid}.json`;
+		try {
+			const cached = JSON.parse(FS(cachePath).readSync());
+			const age = Date.now() - cached.timestamp;
+			if (age < 5 * 24 * 60 * 60 * 1000) { // 5 days
+				connection.send(`|queryresponse|spreadsdata|${JSON.stringify(cached.spreads)}`);
+				return;
+			}
+		} catch {}
+
+		// Try recent months for stats
+		const now = new Date();
+		let statsText: string | null = null;
+		for (let attempt = 0; attempt < 3; attempt++) {
+			const date = new Date(now.getFullYear(), now.getMonth() - attempt, 1);
+			const yearMonth = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+			const statsUrl = `https://www.smogon.com/stats/${yearMonth}/moveset/${formatid}-1500.txt`;
+			try {
+				statsText = await Net(statsUrl).get();
+				break;
+			} catch {
+				continue;
+			}
+		}
+
+		if (!statsText) {
+			return this.errorReply(`Could not find usage stats for format "${formatid}".`);
+		}
+
+		// Parse spreads using replay-parser
+		const {parseSpreads} = require('../replay-parser');
+		const spreads = parseSpreads(statsText);
+
+		// Save to cache
+		try {
+			FS('config/stats-cache').mkdirpSync();
+			FS(cachePath).writeSync(JSON.stringify({timestamp: Date.now(), spreads}));
+		} catch {}
+
+		connection.send(`|queryresponse|spreadsdata|${JSON.stringify(spreads)}`);
+	},
+	fetchstatshelp: [
+		`/fetchstats [formatid] - Fetches Smogon usage stats spreads for the given format.`,
+	],
+
+	async savereplaydata(target, room, user, connection) {
+		if (!target) return this.errorReply('Usage: /savereplaydata [json-data]');
+
+		let data;
+		try {
+			data = JSON.parse(target);
+		} catch {
+			return this.errorReply('Invalid JSON data.');
+		}
+
+		if (!data.log || !data.packedTeams || !data.formatid) {
+			return this.errorReply('Missing required fields: log, packedTeams, formatid');
+		}
+
+		const id = `replay-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+		FS('config/replay-imports').mkdirpSync();
+		FS(`config/replay-imports/${id}.json`).writeSync(JSON.stringify(data));
+
+		connection.send(`|queryresponse|replayimportid|${JSON.stringify({id})}`);
+	},
+	savereplaydatahelp: [
+		`/savereplaydata [json] - Saves replay import data and returns an ID.`,
+	],
+
+	async replaybattle(target, room, user, connection) {
+		const id = target.trim();
+		if (!id) return this.errorReply('Usage: /replaybattle [import-id]');
+		if (!/^[\w-]+$/.test(id)) return this.errorReply('Invalid import ID.');
+
+		let importJSON: string;
+		try {
+			importJSON = FS(`config/replay-imports/${id}.json`).readSync();
+		} catch {
+			return this.errorReply('Import data not found.');
+		}
+
+		const importData = JSON.parse(importJSON);
+		const replayLog = importData.log;
+		const packedTeams = importData.packedTeams;
+		let format = importData.formatid;
+
+		// Strip Bo3/Bo5 from format for battle creation
+		format = format.replace(/bo[35]$/i, '');
+
+		if (!packedTeams || packedTeams.length < 2) {
+			return this.errorReply('Invalid import data: missing teams.');
+		}
+
+		// Validate teams
+		const validator = TeamValidatorAsync.get(format);
+		const [val1, val2] = await Promise.all([
+			validator.validateTeam(packedTeams[0]),
+			validator.validateTeam(packedTeams[1]),
+		]);
+		if (!val1.startsWith('1')) return this.errorReply(`Team 1 rejected: ${val1.slice(1)}`);
+		if (!val2.startsWith('1')) return this.errorReply(`Team 2 rejected: ${val2.slice(1)}`);
+
+		// Parse replay
+		const {parseShowteams, parseReplayChoices, parseAllTurnPatches, countTurns} = require('../replay-parser');
+		const showteams = parseShowteams(replayLog);
+		const choices = parseReplayChoices(replayLog, showteams.p1, showteams.p2);
+		const totalTurns = countTurns(replayLog);
+
+		// Create battle
+		const battleRoom = Rooms.createBattle({
+			format,
+			players: [
+				{user, team: val1.slice(1)},
+				{user: null, team: val2.slice(1)},
+			],
+			challengeType: 'challenge',
+			rated: 0,
+		});
+		if (!battleRoom) return this.errorReply('Failed to create battle.');
+
+		user.joinRoom(battleRoom);
+		const battleGame = battleRoom.battle!;
+
+		// Suppress sim output during replay — we'll send the original replay
+		// log via |initlog| instead of the simulated output
+		battleGame.suppressOutput = true;
+
+		// Feed team preview choices
+		if (choices.teamPreview.p1) {
+			void battleGame.stream.write(`>p1 ${choices.teamPreview.p1}`);
+		}
+		if (choices.teamPreview.p2) {
+			void battleGame.stream.write(`>p2 ${choices.teamPreview.p2}`);
+		}
+
+		// Feed per-turn choices with patching, using >replayturn to handle
+		// RNG divergence (unexpected faints, forced switches, etc.) atomically
+		const turnPatches = parseAllTurnPatches(replayLog, totalTurns);
+
+		for (let turn = 0; turn < choices.turns.length; turn++) {
+			const turnChoices = choices.turns[turn];
+			const turnNum = turn + 1;
+			const forced = choices.forcedSwitches[turn];
+			const forcedSpecies = choices.forcedSwitchSpecies[turn];
+
+			if (!turnChoices.p1 && !turnChoices.p2) continue;
+
+			const turnData: any = {
+				p1: turnChoices.p1 || '',
+				p2: turnChoices.p2 || '',
+				patch: turnPatches[turnNum] || null,
+				forcedP1: forced?.p1 || '',
+				forcedP2: forced?.p2 || '',
+			};
+			// Include species info for forced switches so the handler can
+			// resolve the correct team index at runtime
+			if (forcedSpecies) {
+				if (Object.keys(forcedSpecies.p1).length > 0) turnData.forcedP1Species = forcedSpecies.p1;
+				if (Object.keys(forcedSpecies.p2).length > 0) turnData.forcedP2Species = forcedSpecies.p2;
+			}
+
+			void battleGame.stream.write(`>replayturn ${JSON.stringify(turnData)}`);
+		}
+
+		// Wait for all replay turns to be processed before sending client data
+		void battleGame.stream.write(`>replaydone`);
+		if (!battleGame.dataResolvers) battleGame.dataResolvers = [];
+		await new Promise<string[]>((resolve, reject) => {
+			battleGame.dataResolvers!.push([resolve, reject]);
+		});
+
+		// Re-enable output and send the final requests to the client
+		battleGame.suppressOutput = false;
+
+		// Order matters: initlog → jumptoturn → request
+		// 1. initlog replaces client step queue with replay log and seeks to end
+		//    (populates stepQueueByTurn, sets ended=true from |win|)
+		// 2. jumptoturn uses stepQueueByTurn to jump to the last turn (sets ended=false)
+		// 3. request shows move/switch controls for the jumped-to turn
+
+		// 1. Send original replay log via |initlog|
+		const replayLogLines = replayLog.split('\n');
+		const filteredLog = replayLogLines.filter((line: string) =>
+			line.startsWith('|') && !line.startsWith('|j|') && !line.startsWith('|l|') &&
+			!line.startsWith('|c|') && !line.startsWith('|html|') && !line.startsWith('|uhtml|')
+		);
+		const initlogData = JSON.stringify(filteredLog);
+		for (const player of battleGame.players) {
+			player?.sendRoom(`|initlog|${initlogData}`);
+		}
+
+		// 2. Send the stored final requests to the client
+		for (const slot of ['p1', 'p2'] as const) {
+			const storedReq = battleGame[slot].request;
+			if (storedReq?.request) {
+				for (const player of battleGame.players) {
+					const request = JSON.parse(storedReq.request);
+					request.isYourSlot = player.slot === slot;
+					player?.sendRoom(`|request|${JSON.stringify(request)}`);
+				}
+			}
+		}
+
+		// Clean up temp file
+		try {
+			FS(`config/replay-imports/${id}.json`).unlinkIfExistsSync();
+		} catch {}
+	},
+	replaybattlehelp: [
+		`/replaybattle [import-id] - Creates a battle from an imported replay.`,
 	],
 
 	mv: 'move',

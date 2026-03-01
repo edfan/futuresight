@@ -623,15 +623,17 @@ export class Side {
 			targetLoc = 0;
 		} else if (this.battle.actions.targetTypeChoices(targetType)) {
 			if (!targetLoc && this.active.length >= 2) {
-				return this.emitChoiceError(`Can't move: ${move.name} needs a target`);
+				// Auto-assign a default target instead of erroring.
+				// This allows replay imports to submit moves without targets.
+				targetLoc = -1;
 			}
 			if (!this.battle.validTargetLoc(targetLoc, pokemon, targetType)) {
 				return this.emitChoiceError(`Can't move: Invalid target for ${move.name}`);
 			}
 		} else {
-			if (targetLoc) {
-				return this.emitChoiceError(`Can't move: You can't choose a target for ${move.name}`);
-			}
+			// Silently ignore targets for non-targetable moves (e.g., Protect, spread moves).
+			// This allows replay imports to submit moves with targets for any move type.
+			targetLoc = 0;
 		}
 
 		const lockedMove = pokemon.getLockedMove();
@@ -811,7 +813,7 @@ export class Side {
 			if (this.requestState !== 'switch') {
 				return this.emitChoiceError(`Can't switch: You need to select a Pokémon to switch in`);
 			}
-			if (this.slotConditions[pokemon.position]['revivalblessing']) {
+			if (this.slotConditions[pokemon.position]?.['revivalblessing']) {
 				slot = 0;
 				while (!this.pokemon[slot].fainted) slot++;
 			} else {
@@ -837,14 +839,14 @@ export class Side {
 		}
 		if (slot >= this.pokemon.length) {
 			return this.emitChoiceError(`Can't switch: You do not have a Pokémon in slot ${slot + 1} to switch to`);
-		} else if (slot < this.active.length && !this.slotConditions[pokemon.position]['revivalblessing']) {
+		} else if (slot < this.active.length && !this.slotConditions[pokemon.position]?.['revivalblessing']) {
 			return this.emitChoiceError(`Can't switch: You can't switch to an active Pokémon`);
 		} else if (this.choice.switchIns.has(slot)) {
 			return this.emitChoiceError(`Can't switch: The Pokémon in slot ${slot + 1} can only switch in once`);
 		}
 		const targetPokemon = this.pokemon[slot];
 
-		if (this.slotConditions[pokemon.position]['revivalblessing']) {
+		if (this.slotConditions[pokemon.position]?.['revivalblessing']) {
 			if (!targetPokemon.fainted) {
 				return this.emitChoiceError(`Can't switch: You have to pass to a fainted Pokémon`);
 			}
@@ -1141,7 +1143,19 @@ export class Side {
 				break;
 			case 'auto':
 			case 'default':
-				this.autoChoose();
+				// When default appears in a multi-choice string (e.g., "move X, default"),
+				// only auto-choose for one slot. When standalone, auto-choose all.
+				if (choiceStrings.length > 1) {
+					if (this.requestState === 'move') {
+						if (!this.chooseMove()) return false;
+					} else if (this.requestState === 'switch') {
+						if (!this.chooseSwitch()) return false;
+					} else {
+						this.autoChoose();
+					}
+				} else {
+					this.autoChoose();
+				}
 				break;
 			default:
 				this.emitChoiceError(`Unrecognized choice: ${choiceString}`);

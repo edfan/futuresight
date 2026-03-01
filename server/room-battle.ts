@@ -538,6 +538,7 @@ export class RoomBattle extends RoomGame<RoomBattlePlayer> {
 	requestCount = 0;
 	options: RoomBattleOptions;
 	frozen?: boolean;
+	suppressOutput?: boolean;
 	dataResolvers?: [((args: string[]) => void), ((error: Error) => void)][];
 	constructor(room: GameRoom, options: RoomBattleOptions) {
 		super(room);
@@ -776,6 +777,7 @@ export class RoomBattle extends RoomGame<RoomBattlePlayer> {
 			break;
 
 		case 'update':
+			if (this.suppressOutput) break;
 			for (const line of lines.slice(1)) {
 				if (line.startsWith('|turn|')) {
 					this.turn = parseInt(line.slice(6));
@@ -796,6 +798,7 @@ export class RoomBattle extends RoomGame<RoomBattlePlayer> {
 			if (lines[2].startsWith(`|error|[Invalid choice] Can't do anything`)) {
 				// ... should not happen
 			} else if (lines[2].startsWith(`|error|[Invalid choice]`)) {
+				if (this.suppressOutput) break;
 				const undoFailed = lines[2].includes(`Can't undo`);
 				const request = this[slot].request;
 				request.isWait = undoFailed ? 'cantUndo' : false;
@@ -813,14 +816,16 @@ export class RoomBattle extends RoomGame<RoomBattlePlayer> {
 					choice: '',
 				};
 				this.requestCount++;
-				for (const player of this.players) {
-					request.isYourSlot = player.slot === slot;
-					requestJSON = JSON.stringify(request);
-					player?.sendRoom(`|request|${requestJSON}`);
+				if (!this.suppressOutput) {
+					for (const player of this.players) {
+						request.isYourSlot = player.slot === slot;
+						requestJSON = JSON.stringify(request);
+						player?.sendRoom(`|request|${requestJSON}`);
+					}
 				}
 				break;
 			}
-			player?.sendRoom(lines[2]);
+			if (!this.suppressOutput) player?.sendRoom(lines[2]);
 			break;
 		}
 

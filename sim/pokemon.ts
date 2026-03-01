@@ -745,7 +745,12 @@ export class Pokemon {
 		targetLoc = Math.abs(targetLoc);
 		if (targetLoc > side.active.length) {
 			targetLoc -= side.active.length;
-			side = this.battle.sides[side.n + 2];
+			const nextSide = this.battle.sides[side.n + 2];
+			if (!nextSide) {
+				// In non-multi battles, there's no side.n+2. Clamp to valid range.
+				return side.active[side.active.length - 1] || null;
+			}
+			side = nextSide;
 		}
 		return side.active[targetLoc - 1];
 	}
@@ -1132,7 +1137,7 @@ export class Pokemon {
 		if (this.battle.gen > 6) entry.ability = this.ability;
 		if (this.battle.gen >= 9) {
 			entry.commanding = !!this.volatiles['commanding'] && !this.fainted;
-			entry.reviving = this.isActive && !!this.side.slotConditions[this.position]['revivalblessing'];
+			entry.reviving = this.isActive && !!this.side.slotConditions[this.position]?.['revivalblessing'];
 		}
 		if (this.battle.gen === 9) {
 			entry.teraType = this.teraType;
